@@ -15,7 +15,7 @@ GITHUB_TOKEN = os.environ['GITHUB_TOKEN']
 GITHUB_REPO = "Linkjustice2/saltoback-demonlist"
 
 # ------------------------------
-# Flask app to keep Repl/Render awake
+# Flask app to keep Render awake
 # ------------------------------
 app = Flask("")
 
@@ -26,7 +26,6 @@ def home():
 def run():
     app.run(host="0.0.0.0", port=8080)
 
-# Run Flask in a separate thread
 Thread(target=run).start()
 
 # ------------------------------
@@ -45,7 +44,9 @@ print(f"Connected to GitHub repo: {repo.full_name}")
 # ------------------------------
 @bot.tree.command(name="help", description="Simple help command")
 async def help_command(interaction: discord.Interaction):
+    # ------------------------------
     # CHANGE THE MESSAGE BELOW TO YOUR PREFERRED HELP TEXT
+    # ------------------------------
     message = "Hello! This is your help message. Change this text to whatever you like."
     await interaction.response.send_message(message)
     print(f"/help used by {interaction.user}")
@@ -78,7 +79,9 @@ async def list_add_command(
 ):
     await interaction.response.defer()
 
+    # ------------------------------
     # Map user choice to GitHub folder
+    # ------------------------------
     folder_map = {
         "Demon List": "list",
         "Challenge List": "clist",
@@ -86,10 +89,14 @@ async def list_add_command(
     }
     folder = folder_map[list_name.value]
 
-    # File path
+    # ------------------------------
+    # File path for the new JSON
+    # ------------------------------
     file_path = f"data/{folder}/{level_name}.json"
 
-    # JSON content
+    # ------------------------------
+    # JSON content for the level
+    # ------------------------------
     file_content = {
         "id": level_id,
         "name": level_name,
@@ -102,13 +109,18 @@ async def list_add_command(
         "records": []
     }
 
-    # Convert to string and ensure {} wrapping
+    # Convert to string and explicitly include { } wrapping
     content_str = json.dumps(file_content, indent=4)
     content_str = "{\n" + content_str[1:-1] + "\n}"
 
-    commit_message = f"Added {level_name} to {folder}"
+    # ------------------------------
+    # Commit message for the new JSON
+    # ------------------------------
+    commit_message = f"Add {level_name}.json to {folder} via /list add"
 
-    # Check if file exists, create if not
+    # ------------------------------
+    # Create the new JSON file if it doesn't exist
+    # ------------------------------
     try:
         repo.get_contents(file_path)
         await interaction.followup.send(f"⚠️ `{level_name}.json` already exists in `{folder}`!")
@@ -116,6 +128,26 @@ async def list_add_command(
         repo.create_file(file_path, commit_message, content_str)
         await interaction.followup.send(f"✅ `{level_name}.json` created in `{folder}`.")
         print(f"Created {file_path} on GitHub via /list add by {interaction.user}")
+
+    # ------------------------------
+    # Update the corresponding array file in /data
+    # ------------------------------
+    array_file_map = {
+        "list": "data/_list.json",
+        "clist": "data/_clist.json",
+        "ilist": "data/_ilist.json"
+    }
+    array_file_path = array_file_map[folder]
+
+    try:
+        array_file = repo.get_contents(array_file_path)
+        array_content = json.loads(array_file.decoded_content.decode())
+        array_content.append(level_name)  # add level name to end of array
+        array_str = json.dumps(array_content, indent=4)
+        repo.update_file(array_file.path, f"Update {array_file_path} with new level {level_name}", array_str, array_file.sha)
+        print(f"✅ Updated {array_file_path} on GitHub with {level_name}")
+    except Exception as e:
+        print(f"⚠️ Could not update array file: {e}")
 
 # ------------------------------
 # On ready

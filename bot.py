@@ -106,7 +106,7 @@ async def list_add_command(
     content_str = json.dumps(file_content, indent=4)
     content_str = "{\n" + content_str[1:-1] + "\n}"
 
-    commit_message = f"Add {level_name}.json to {folder} via /list add"
+    commit_message = f"Added {level_name} to {folder}"
 
     # Check if file exists, create if not
     try:

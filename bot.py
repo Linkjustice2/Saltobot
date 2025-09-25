@@ -66,7 +66,8 @@ async def help_command(interaction: discord.Interaction):
     level_id="ID of the level",
     level_author="Author of the level",
     level_verifier="Verifier of the level",
-    video_link="Video link for the level"
+    video_link="Video link for the level",
+    list_position="Position in the list array (line number, starting at 1)"
 )
 @app_commands.choices(list_name=[
     app_commands.Choice(name="Demon List", value="Demon List"),
@@ -80,7 +81,8 @@ async def list_add_command(
     level_id: str,
     level_author: str,
     level_verifier: str,
-    video_link: str
+    video_link: str,
+    list_position: int  # New input
 ):
     # Check role
     member = interaction.user
@@ -90,7 +92,7 @@ async def list_add_command(
 
     await interaction.response.defer()
 
-    # Map user choice to GitHub folder
+    # Map list to folder
     folder_map = {
         "Demon List": "list",
         "Challenge List": "clist",
@@ -98,10 +100,8 @@ async def list_add_command(
     }
     folder = folder_map[list_name.value]
 
-    # File path for the new JSON
+    # Prepare JSON file for the level
     file_path = f"data/{folder}/{level_name}.json"
-
-    # JSON content for the level
     file_content = {
         "id": level_id,
         "name": level_name,
@@ -113,24 +113,21 @@ async def list_add_command(
         "password": "N/A",
         "records": []
     }
-
-    # Convert to string and explicitly include { } wrapping
     content_str = json.dumps(file_content, indent=4)
     content_str = "{\n" + content_str[1:-1] + "\n}"
-
-    # Commit message for the new JSON
     commit_message = f"Add {level_name}.json to {folder} via /list add"
 
-    # Create the new JSON file if it doesn't exist
+    # Create JSON if it doesn't exist
     try:
         repo.get_contents(file_path)
-        await interaction.followup.send(f"⚠️ `{level_name}.json` already exists in `{folder}`!")
+        await interaction.followup.send(f"⚠️ `{level_name}` already exists in `{folder}`!")
     except:
         repo.create_file(file_path, commit_message, content_str)
-        await interaction.followup.send(f"✅ `{level_name}.json` created in `{folder}`.")
-        print(f"Created {file_path} on GitHub via /list add by {interaction.user}")
+        await interaction.followup.send(f"✅ `{level_name}` created in `{folder}`.")
 
-    # Update the corresponding array file in /data
+    # ------------------------------
+    # Insert level into array at the given position
+    # ------------------------------
     array_file_map = {
         "list": "data/_list.json",
         "clist": "data/_clist.json",
@@ -141,12 +138,18 @@ async def list_add_command(
     try:
         array_file = repo.get_contents(array_file_path)
         array_content = json.loads(array_file.decoded_content.decode())
-        array_content.append(level_name)  # add level name to end of array
+
+        # Convert user line number to 0-based index
+        insert_index = max(0, min(len(array_content), list_position - 1))
+        array_content.insert(insert_index, level_name)
+
         array_str = json.dumps(array_content, indent=4)
-        repo.update_file(array_file.path, f"Update {array_file_path} with new level {level_name}", array_str, array_file.sha)
-        print(f"✅ Updated {array_file_path} on GitHub with {level_name}")
+        repo.update_file(array_file.path, f"Insert {level_name} at position {list_position} in {array_file_path}", array_str, array_file.sha)
+        await interaction.followup.send(f"✅ `{level_name}` inserted into `{array_file_path}` at position {list_position}.")
+        print(f"Inserted {level_name} into {array_file_path} at position {list_position} via /list_add")
     except Exception as e:
-        print(f"⚠️ Could not update array file: {e}")
+        await interaction.followup.send(f"⚠️ Could not update array file `{array_file_path}`.")
+        print(f"Array insert error: {e}")
 
 # ------------------------------
 # /list delete command
@@ -186,8 +189,8 @@ async def list_delete_command(
     file_path = f"data/{folder}/{level_name}.json"
     try:
         file = repo.get_contents(file_path)
-        repo.delete_file(file.path, f"Delete {level_name}.json from {folder}", file.sha)
-        await interaction.followup.send(f"✅ `{level_name}.json` deleted from `{folder}`.")
+        repo.delete_file(file.path, f"Delete {level_name} from {folder}", file.sha)
+        await interaction.followup.send(f"✅ `{level_name}` deleted from `{folder}`.")
         print(f"Deleted {file_path} on GitHub via /list_delete by {interaction.user}")
     except Exception as e:
         await interaction.followup.send(f"⚠️ Could not find `{level_name}.json` in `{folder}`.")

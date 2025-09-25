@@ -15,6 +15,11 @@ GITHUB_TOKEN = os.environ['GITHUB_TOKEN']
 GITHUB_REPO = "Linkjustice2/saltoback-demonlist"
 
 # ------------------------------
+# Allowed role for level commands
+# ------------------------------
+ALLOWED_ROLE_ID = 1412532422167236679
+
+# ------------------------------
 # Flask app to keep Render awake
 # ------------------------------
 app = Flask("")
@@ -77,11 +82,15 @@ async def list_add_command(
     level_verifier: str,
     video_link: str
 ):
+    # Check role
+    member = interaction.user
+    if ALLOWED_ROLE_ID not in [role.id for role in member.roles]:
+        await interaction.response.send_message("❌ You do not have permission to use this command.", ephemeral=True)
+        return
+
     await interaction.response.defer()
 
-    # ------------------------------
     # Map user choice to GitHub folder
-    # ------------------------------
     folder_map = {
         "Demon List": "list",
         "Challenge List": "clist",
@@ -89,14 +98,10 @@ async def list_add_command(
     }
     folder = folder_map[list_name.value]
 
-    # ------------------------------
     # File path for the new JSON
-    # ------------------------------
     file_path = f"data/{folder}/{level_name}.json"
 
-    # ------------------------------
     # JSON content for the level
-    # ------------------------------
     file_content = {
         "id": level_id,
         "name": level_name,
@@ -113,14 +118,10 @@ async def list_add_command(
     content_str = json.dumps(file_content, indent=4)
     content_str = "{\n" + content_str[1:-1] + "\n}"
 
-    # ------------------------------
     # Commit message for the new JSON
-    # ------------------------------
     commit_message = f"Add {level_name}.json to {folder} via /list add"
 
-    # ------------------------------
     # Create the new JSON file if it doesn't exist
-    # ------------------------------
     try:
         repo.get_contents(file_path)
         await interaction.followup.send(f"⚠️ `{level_name}.json` already exists in `{folder}`!")
@@ -129,9 +130,7 @@ async def list_add_command(
         await interaction.followup.send(f"✅ `{level_name}.json` created in `{folder}`.")
         print(f"Created {file_path} on GitHub via /list add by {interaction.user}")
 
-    # ------------------------------
     # Update the corresponding array file in /data
-    # ------------------------------
     array_file_map = {
         "list": "data/_list.json",
         "clist": "data/_clist.json",
@@ -148,6 +147,75 @@ async def list_add_command(
         print(f"✅ Updated {array_file_path} on GitHub with {level_name}")
     except Exception as e:
         print(f"⚠️ Could not update array file: {e}")
+
+# ------------------------------
+# /list delete command
+# ------------------------------
+@bot.tree.command(name="list_delete", description="Delete a level from a list")
+@app_commands.describe(
+    list_name="Select which list to delete the level from",
+    level_name="Name of the level to delete"
+)
+@app_commands.choices(list_name=[
+    app_commands.Choice(name="Demon List", value="Demon List"),
+    app_commands.Choice(name="Challenge List", value="Challenge List"),
+    app_commands.Choice(name="Impossible List", value="Impossible List")
+])
+async def list_delete_command(
+    interaction: discord.Interaction,
+    list_name: app_commands.Choice[str],
+    level_name: str
+):
+    # Check role
+    member = interaction.user
+    if ALLOWED_ROLE_ID not in [role.id for role in member.roles]:
+        await interaction.response.send_message("❌ You do not have permission to use this command.", ephemeral=True)
+        return
+
+    await interaction.response.defer()
+
+    # Map user choice to GitHub folder
+    folder_map = {
+        "Demon List": "list",
+        "Challenge List": "clist",
+        "Impossible List": "ilist"
+    }
+    folder = folder_map[list_name.value]
+
+    # Delete level JSON
+    file_path = f"data/{folder}/{level_name}.json"
+    try:
+        file = repo.get_contents(file_path)
+        repo.delete_file(file.path, f"Delete {level_name}.json from {folder}", file.sha)
+        await interaction.followup.send(f"✅ `{level_name}.json` deleted from `{folder}`.")
+        print(f"Deleted {file_path} on GitHub via /list_delete by {interaction.user}")
+    except Exception as e:
+        await interaction.followup.send(f"⚠️ Could not find `{level_name}.json` in `{folder}`.")
+        print(f"Delete JSON error: {e}")
+
+    # Delete level from array file
+    array_file_map = {
+        "list": "data/_list.json",
+        "clist": "data/_clist.json",
+        "ilist": "data/_ilist.json"
+    }
+    array_file_path = array_file_map[folder]
+
+    try:
+        array_file = repo.get_contents(array_file_path)
+        array_content = json.loads(array_file.decoded_content.decode())
+
+        if level_name in array_content:
+            array_content.remove(level_name)
+            array_str = json.dumps(array_content, indent=4)
+            repo.update_file(array_file.path, f"Remove {level_name} from {array_file_path}", array_str, array_file.sha)
+            await interaction.followup.send(f"✅ `{level_name}` removed from `{array_file_path}`.")
+            print(f"Removed {level_name} from {array_file_path} via /list_delete")
+        else:
+            await interaction.followup.send(f"⚠️ `{level_name}` not found in `{array_file_path}`.")
+    except Exception as e:
+        await interaction.followup.send(f"⚠️ Could not access array file `{array_file_path}`.")
+        print(f"Delete array error: {e}")
 
 # ------------------------------
 # On ready

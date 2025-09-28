@@ -8,10 +8,10 @@ from flask import Flask
 from threading import Thread
 
 # ------------------------------
-# Tokens (hardcoded for now)
+# Tokens from environment variables
 # ------------------------------
-DISCORD_TOKEN = "MTQyMDIxODczNDM5MTMyODkxOQ.GWkIIh.os1Ux_Lz7RfnOXpP3KoRD1tEZ1vLjNeLktHLJc"
-GITHUB_TOKEN = "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"
+DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 GITHUB_REPO = "Linkjustice2/saltoback-demonlist"
 
 # ------------------------------
@@ -153,7 +153,7 @@ async def list_add_command(
 # ------------------------------
 # /list delete command
 # ------------------------------
-# ... keep your existing /list_delete code unchanged ...
+# ... keep your existing /list_delete code here unchanged ...
 
 # ------------------------------
 # On ready

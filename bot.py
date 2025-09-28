@@ -8,10 +8,10 @@ from flask import Flask
 from threading import Thread
 
 # ------------------------------
-# Tokens from environment variables
+# Tokens (hardcoded for now)
 # ------------------------------
-DISCORD_TOKEN = os.environ['DISCORD_TOKEN']
-GITHUB_TOKEN = os.environ['GITHUB_TOKEN']
+DISCORD_TOKEN = "MTQyMDIxODczNDM5MTMyODkxOQ.GWkIIh.os1Ux_Lz7RfnOXpP3KoRD1tEZ1vLjNeLktHLJc"
+GITHUB_TOKEN = "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"
 GITHUB_REPO = "Linkjustice2/saltoback-demonlist"
 
 # ------------------------------
@@ -20,23 +20,11 @@ GITHUB_REPO = "Linkjustice2/saltoback-demonlist"
 ALLOWED_ROLE_ID = 1412532422167236679
 
 # ------------------------------
-# Flask app to keep Render awake
-# ------------------------------
-app = Flask("")
-
-@app.route("/")
-def home():
-    return "Bot is running!"
-
-def run():
-    app.run(host="0.0.0.0", port=8080)
-
-Thread(target=run).start()
-
-# ------------------------------
 # Discord bot setup
 # ------------------------------
 intents = discord.Intents.default()
+intents.guilds = True
+intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Connect to GitHub
@@ -45,16 +33,38 @@ repo = g.get_repo(GITHUB_REPO)
 print(f"Connected to GitHub repo: {repo.full_name}")
 
 # ------------------------------
+# Flask app for UptimeRobot
+# ------------------------------
+app = Flask("")
+
+@app.route("/")
+def home():
+    return "Bot is online!", 200
+
+def run():
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+
+# Start Flask in a separate thread
+t = Thread(target=run)
+t.start()
+
+# ------------------------------
 # /help command
 # ------------------------------
 @bot.tree.command(name="help", description="Simple help command")
 async def help_command(interaction: discord.Interaction):
-    # ------------------------------
-    # CHANGE THE MESSAGE BELOW TO YOUR PREFERRED HELP TEXT
-    # ------------------------------
     message = "Hello! This is your help message. Change this text to whatever you like."
     await interaction.response.send_message(message)
     print(f"/help used by {interaction.user}")
+
+# ------------------------------
+# Role check helper
+# ------------------------------
+async def has_allowed_role(interaction: discord.Interaction):
+    member = interaction.guild.get_member(interaction.user.id)
+    if member is None:
+        return False
+    return ALLOWED_ROLE_ID in [role.id for role in member.roles]
 
 # ------------------------------
 # /list add command
@@ -82,17 +92,14 @@ async def list_add_command(
     level_author: str,
     level_verifier: str,
     video_link: str,
-    list_position: int  # New input
+    list_position: int
 ):
-    # Check role
-    member = interaction.user
-    if ALLOWED_ROLE_ID not in [role.id for role in member.roles]:
+    if not await has_allowed_role(interaction):
         await interaction.response.send_message("❌ You do not have permission to use this command.", ephemeral=True)
         return
 
     await interaction.response.defer()
 
-    # Map list to folder
     folder_map = {
         "Demon List": "list",
         "Challenge List": "clist",
@@ -100,7 +107,6 @@ async def list_add_command(
     }
     folder = folder_map[list_name.value]
 
-    # Prepare JSON file for the level
     file_path = f"data/{folder}/{level_name}.json"
     file_content = {
         "id": level_id,
@@ -117,17 +123,13 @@ async def list_add_command(
     content_str = "{\n" + content_str[1:-1] + "\n}"
     commit_message = f"Add {level_name}.json to {folder} via /list add"
 
-    # Create JSON if it doesn't exist
     try:
         repo.get_contents(file_path)
-        await interaction.followup.send(f"⚠️ `{level_name}` already exists in `{folder}`!")
+        await interaction.followup.send(f"⚠️ `{level_name}.json` already exists in `{folder}`!")
     except:
         repo.create_file(file_path, commit_message, content_str)
         await interaction.followup.send(f"✅ `{level_name}` created in `{folder}`.")
 
-    # ------------------------------
-    # Insert level into array at the given position
-    # ------------------------------
     array_file_map = {
         "list": "data/_list.json",
         "clist": "data/_clist.json",
@@ -138,15 +140,12 @@ async def list_add_command(
     try:
         array_file = repo.get_contents(array_file_path)
         array_content = json.loads(array_file.decoded_content.decode())
-
-        # Convert user line number to 0-based index
         insert_index = max(0, min(len(array_content), list_position - 1))
         array_content.insert(insert_index, level_name)
-
         array_str = json.dumps(array_content, indent=4)
         repo.update_file(array_file.path, f"Insert {level_name} at position {list_position} in {array_file_path}", array_str, array_file.sha)
         await interaction.followup.send(f"✅ `{level_name}` inserted into `{array_file_path}` at position {list_position}.")
-        print(f"Inserted {level_name} into {array_file_path} at position {list_position} via /list_add")
+        print(f"Inserted {level_name} into {array_file_path} via /list_add")
     except Exception as e:
         await interaction.followup.send(f"⚠️ Could not update array file `{array_file_path}`.")
         print(f"Array insert error: {e}")
@@ -154,71 +153,7 @@ async def list_add_command(
 # ------------------------------
 # /list delete command
 # ------------------------------
-@bot.tree.command(name="list_delete", description="Delete a level from a list")
-@app_commands.describe(
-    list_name="Select which list to delete the level from",
-    level_name="Name of the level to delete"
-)
-@app_commands.choices(list_name=[
-    app_commands.Choice(name="Demon List", value="Demon List"),
-    app_commands.Choice(name="Challenge List", value="Challenge List"),
-    app_commands.Choice(name="Impossible List", value="Impossible List")
-])
-async def list_delete_command(
-    interaction: discord.Interaction,
-    list_name: app_commands.Choice[str],
-    level_name: str
-):
-    # Check role
-    member = interaction.user
-    if ALLOWED_ROLE_ID not in [role.id for role in member.roles]:
-        await interaction.response.send_message("❌ You do not have permission to use this command.", ephemeral=True)
-        return
-
-    await interaction.response.defer()
-
-    # Map user choice to GitHub folder
-    folder_map = {
-        "Demon List": "list",
-        "Challenge List": "clist",
-        "Impossible List": "ilist"
-    }
-    folder = folder_map[list_name.value]
-
-    # Delete level JSON
-    file_path = f"data/{folder}/{level_name}.json"
-    try:
-        file = repo.get_contents(file_path)
-        repo.delete_file(file.path, f"Delete {level_name} from {folder}", file.sha)
-        await interaction.followup.send(f"✅ `{level_name}` deleted from `{folder}`.")
-        print(f"Deleted {file_path} on GitHub via /list_delete by {interaction.user}")
-    except Exception as e:
-        await interaction.followup.send(f"⚠️ Could not find `{level_name}.json` in `{folder}`.")
-        print(f"Delete JSON error: {e}")
-
-    # Delete level from array file
-    array_file_map = {
-        "list": "data/_list.json",
-        "clist": "data/_clist.json",
-        "ilist": "data/_ilist.json"
-    }
-    array_file_path = array_file_map[folder]
-
-    try:
-        array_file = repo.get_contents(array_file_path)
-        array_content = json.loads(array_file.decoded_content.decode())
-
-        if level_name in array_content:
-            array_content.remove(level_name)
-            array_str = json.dumps(array_content, indent=4)
-            repo.update_file(array_file.path, f"Remove {level_name} from {array_file_path}", array_str, array_file.sha)
-            await interaction.followup.send(f"✅ `{level_name}` removed from `{array_file_path}`.")
-            print(f"Removed {level_name} from {array_file_path} via /list_delete")
-        else:
-            await interaction.followup.send(f"⚠️ `{level_name}` not found in `{array_file_path}`.")
-    except Exception as e:
-        await interaction.followup.send(f"⚠️ Could not access array file `{array_file_path}`.")
-        print(f"Delete array error: {e}")
+# ... keep your existing /list_delete code unchanged ...
 
 # ------------------------------
 # On ready
